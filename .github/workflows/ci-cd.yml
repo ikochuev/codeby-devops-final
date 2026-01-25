@@ -27,11 +27,14 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-go-
 
-    - name: Run tests and generate coverage
+    - name: Run tests, generate coverage and build binary
       run: |
         cd app
         go test ./... -v -coverprofile=coverage.out
         go tool cover -func=coverage.out
+        # Сборка бинарника с именем, содержащим короткий хеш коммита
+        BINARY_NAME="go-websocket-chat-$(git rev-parse --short $GITHUB_SHA)"
+        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o $BINARY_NAME .
 
     - name: Upload coverage report to Codecov
       uses: codecov/codecov-action@v3
@@ -40,6 +43,13 @@ jobs:
       with:
         file: ./app/coverage.out
         fail_ci_if_error: true
+
+    - name: Upload Go binary as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: go-websocket-chat-binary
+        path: app/go-websocket-chat-*
+        retention-days: 7
 
   build-and-push:
     needs: test
@@ -57,7 +67,6 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v2
 
-    # 1. Логин в GitHub Container Registry (автоматически через GITHUB_TOKEN)
     - name: Log in to GitHub Container Registry
       uses: docker/login-action@v2
       with:
@@ -65,7 +74,6 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    # 2. Подготовка тегов для образов
     - name: Extract metadata for Docker tags
       id: meta
       uses: docker/metadata-action@v4
@@ -79,7 +87,6 @@ jobs:
           type=sha,prefix={{sha}}-
           type=raw,value=latest,enable={{is_default_branch}}
 
-    # 3. Сборка и публикация образа
     - name: Build and push Docker image
       uses: docker/build-push-action@v4
       with:
@@ -122,9 +129,32 @@ jobs:
 
     - name: Verify deployment
       run: |
+        # Проверяем доступность сервисов с таймаутами и повторными попытками
+        echo "Waiting for services to be healthy..."
+        # 1. Health нашего приложения
         curl -f http://localhost/health || exit 1
+        echo "✓ Application is healthy"
+        
+        # 2. Elasticsearch
         curl -f http://localhost:9200 || exit 1
-        curl -f http://localhost:9090 || exit 1
+        echo "✓ Elasticsearch is healthy"
+        
+        # 3. Prometheus - проверяем внешний порт 9091
+        max_retries=10
+        retry_delay=5
+        for i in $(seq 1 $max_retries); do
+          if curl -s -f http://localhost:9091/-/ready > /dev/null; then
+            echo "✓ Prometheus is ready (attempt $i)"
+            break
+          fi
+          if [ $i -eq $max_retries ]; then
+            echo "✗ Prometheus failed to become ready after $max_retries attempts"
+            exit 1
+          fi
+          echo "Prometheus not ready yet, retrying in ${retry_delay}s (attempt $i)..."
+          sleep $retry_delay
+        done
+        echo "=== All services verified successfully ==="
 
   monitoring:
     needs: deploy
@@ -141,5 +171,5 @@ jobs:
         echo "=== Service Status ==="
         echo "App Health: $(curl -s -o /dev/null -w "%{http_code}" http://localhost/health)"
         echo "Elasticsearch: $(curl -s -o /dev/null -w "%{http_code}" http://localhost:9200)"
-        echo "Prometheus: $(curl -s -o /dev/null -w "%{http_code}" http://localhost:9090)"
+        echo "Prometheus: $(curl -s -o /dev/null -w "%{http_code}" http://localhost:9091)"
         echo "Grafana: $(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000)"
