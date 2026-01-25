@@ -57,15 +57,7 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v2
 
-    # Шаг 1: Вход в Docker Hub (с проверкой наличия секрета)
-    - name: Log in to Docker Hub
-      if: ${{ secrets.DOCKERHUB_TOKEN != '' }}  # Безопасная проверка наличия токена
-      uses: docker/login-action@v2
-      with:
-        username: ${{ vars.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-    # Шаг 2: Вход в GitHub Container Registry (работает всегда)
+    # 1. Логин в GitHub Container Registry (автоматически через GITHUB_TOKEN)
     - name: Log in to GitHub Container Registry
       uses: docker/login-action@v2
       with:
@@ -73,13 +65,12 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    # Шаг 3: Подготовка тегов для образов
+    # 2. Подготовка тегов для образов
     - name: Extract metadata for Docker tags
       id: meta
       uses: docker/metadata-action@v4
       with:
         images: |
-          ${{ vars.DOCKERHUB_USERNAME }}/codeby-devops-final
           ghcr.io/${{ github.repository }}
         tags: |
           type=ref,event=branch
@@ -88,7 +79,7 @@ jobs:
           type=sha,prefix={{sha}}-
           type=raw,value=latest,enable={{is_default_branch}}
 
-    # Шаг 4: Сборка и публикация образов
+    # 3. Сборка и публикация образа
     - name: Build and push Docker image
       uses: docker/build-push-action@v4
       with:
