@@ -1,0 +1,121 @@
+{
+  "dashboard": {
+    "title": "WebSocket Chat Monitoring",
+    "description": "Monitoring for Go WebSocket Chat Application",
+    "tags": ["websocket", "go", "chat"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "WebSocket Clients Connected",
+        "type": "gauge",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "targets": [{
+          "expr": "websocket_clients_connected",
+          "legendFormat": "Connected Clients"
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "min": 0,
+            "max": 100,
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "red", "value": 50}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "WebSocket Messages Rate",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "targets": [
+          {
+            "expr": "rate(websocket_messages_received_total[5m])",
+            "legendFormat": "Messages Received"
+          },
+          {
+            "expr": "rate(websocket_messages_sent_total[5m])",
+            "legendFormat": "Messages Sent"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "HTTP Requests Rate",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "targets": [{
+          "expr": "rate(http_requests_total[5m])",
+          "legendFormat": "{{method}} {{endpoint}} {{status}}"
+        }]
+      },
+      {
+        "id": 4,
+        "title": "HTTP Request Duration",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "targets": [{
+          "expr": "http_request_duration_seconds_bucket",
+          "legendFormat": "{{method}} {{endpoint}}"
+        }]
+      },
+      {
+        "id": 5,
+        "title": "Container Memory Usage",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+        "targets": [{
+          "expr": "container_memory_usage_bytes{container=~\"go-chat.*\"}",
+          "legendFormat": "{{container}}"
+        }]
+      },
+      {
+        "id": 6,
+        "title": "Container CPU Usage",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+        "targets": [{
+          "expr": "rate(container_cpu_usage_seconds_total{container=~\"go-chat.*\"}[5m]) * 100",
+          "legendFormat": "{{container}}"
+        }]
+      },
+      {
+        "id": 7,
+        "title": "Service Health (Blackbox)",
+        "type": "stat",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+        "targets": [{
+          "expr": "probe_success{instance=~\"http://.*/health\"}",
+          "legendFormat": "{{instance}}"
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "green", "value": 1}
+              ]
+            },
+            "unit": "short"
+          }
+        }
+      },
+      {
+        "id": 8,
+        "title": "Response Time (Blackbox)",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+        "targets": [{
+          "expr": "probe_duration_seconds{instance=~\"http://.*/health\"}",
+          "legendFormat": "{{instance}}"
+        }]
+      }
+    ],
+    "time": {"from": "now-1h", "to": "now"},
+    "refresh": "10s"
+  }
+}

@@ -1,0 +1,157 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Run tests
+      run: |
+        cd app
+        go test ./... -v -coverprofile=coverage.out
+        go tool cover -func=coverage.out
+
+    - name: Upload coverage report
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./app/coverage.out
+        fail_ci_if_error: true
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v4
+      with:
+        images: |
+          ${{ secrets.DOCKER_USERNAME }}/go-websocket-chat
+          ghcr.io/${{ github.repository }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=sha,prefix={{sha}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: ./app
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Upload Docker image as artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: docker-image
+        path: ./app
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Docker Compose
+      run: |
+        sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+        sudo chmod +x /usr/local/bin/docker-compose
+
+    - name: Create environment file
+      run: |
+        echo "HOST_IP=$(hostname -I | awk '{print $1}')" >> .env
+        echo "ELASTICSEARCH_HOST=http://$(hostname -I | awk '{print $1}'):9200" >> .env
+        echo "FLUENTD_HOST=$(hostname -I | awk '{print $1}')" >> .env
+        echo "PROMETHEUS_HOST=$(hostname -I | awk '{print $1}')" >> .env
+        echo "GRAFANA_HOST=$(hostname -I | awk '{print $1}')" >> .env
+        echo "GRAFANA_PASSWORD=admin" >> .env
+        echo "CADVISOR_HOST=$(hostname -I | awk '{print $1}')" >> .env
+        echo "BLACKBOX_HOST=$(hostname -I | awk '{print $1}')" >> .env
+
+    - name: Deploy application
+      run: |
+        docker-compose up -d
+        sleep 30
+
+    - name: Verify deployment
+      run: |
+        curl -f http://localhost/health || exit 1
+        curl -f http://localhost:9200 || exit 1
+        curl -f http://localhost:9090 || exit 1
+
+  monitoring:
+    needs: deploy
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Wait for services
+      run: |
+        sleep 60
+        echo "Services should be ready now"
+
+    - name: Check service status
+      run: |
+        echo "=== Service Status ==="
+        echo "App Health: $(curl -s -o /dev/null -w "%{http_code}" http://localhost/health)"
+        echo "Elasticsearch: $(curl -s -o /dev/null -w "%{http_code}" http://localhost:9200)"
+        echo "Prometheus: $(curl -s -o /dev/null -w "%{http_code}" http://localhost:9090)"
+        echo "Grafana: $(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000)"

@@ -1,0 +1,38 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'go-chat-app'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['go-chat-app:8080']
+        labels:
+          service: 'go-chat'
+
+  - job_name: 'blackbox'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['blackbox-exporter:9115']
+        labels:
+          service: 'blackbox-exporter'
+
+  - job_name: 'blackbox-http'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+        - http://go-chat-app:8080/health
+        - http://nginx:80
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

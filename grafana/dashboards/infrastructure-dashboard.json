@@ -1,0 +1,83 @@
+{
+  "dashboard": {
+    "title": "Infrastructure Monitoring",
+    "description": "Container and system metrics from cAdvisor",
+    "tags": ["cadvisor", "infrastructure", "docker"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Container CPU Usage %",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "targets": [{
+          "expr": "sum(rate(container_cpu_usage_seconds_total[5m])) by (container) * 100",
+          "legendFormat": "{{container}}"
+        }]
+      },
+      {
+        "id": 2,
+        "title": "Container Memory Usage",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "targets": [{
+          "expr": "container_memory_usage_bytes",
+          "legendFormat": "{{container}}"
+        }]
+      },
+      {
+        "id": 3,
+        "title": "Container Network I/O",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "targets": [
+          {
+            "expr": "rate(container_network_receive_bytes_total[5m])",
+            "legendFormat": "{{container}} RX"
+          },
+          {
+            "expr": "rate(container_network_transmit_bytes_total[5m])",
+            "legendFormat": "{{container}} TX"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Container Disk I/O",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "targets": [
+          {
+            "expr": "rate(container_fs_reads_bytes_total[5m])",
+            "legendFormat": "{{container}} Read"
+          },
+          {
+            "expr": "rate(container_fs_writes_bytes_total[5m])",
+            "legendFormat": "{{container}} Write"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Running Containers",
+        "type": "stat",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+        "targets": [{
+          "expr": "count(container_memory_usage_bytes) by (host)"
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null}
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "time": {"from": "now-1h", "to": "now"},
+    "refresh": "10s"
+  }
+}

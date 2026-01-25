@@ -1,0 +1,181 @@
+networks:
+  monitoring:
+    driver: bridge
+  app:
+    driver: bridge
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - xpack.security.http.ssl.enabled=false
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  fluentd:
+    build:
+      context: ./fluentd
+      dockerfile: Dockerfile
+    ports:
+      - "24224:24224"
+      - "24224:24224/udp"
+    volumes:
+      - ./fluentd/conf:/fluentd/etc
+      - fluentd-data:/fluentd/log
+    environment:
+      - FLUENTD_CONF=fluentd.conf
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.0
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - XPACK_SECURITY_ENABLED=false
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  go-chat-app:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8080
+    networks:
+      - app
+      - monitoring
+    restart: unless-stopped
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: "fluentd:24224"
+        tag: "docker.{{.Name}}"
+        fluentd-async: "true"
+
+  nginx:
+    image: nginx:1.25-alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/conf.d:/etc/nginx/conf.d
+    networks:
+      - app
+      - monitoring
+    restart: unless-stopped
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: "fluentd:24224"
+        tag: "docker.nginx"
+        fluentd-async: "true"
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    ports:
+      - "8081:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    privileged: true
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    networks:
+      - monitoring
+    restart: unless-stopped
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: "fluentd:24224"
+        tag: "docker.cadvisor"
+        fluentd-async: "true"
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: prometheus
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    networks:
+      - monitoring
+    restart: unless-stopped
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: "fluentd:24224"
+        tag: "docker.prometheus"
+        fluentd-async: "true"
+
+  blackbox-exporter:
+    image: quay.io/prometheus/blackbox-exporter:latest
+    container_name: blackbox-exporter
+    ports:
+      - "9115:9115"
+    volumes:
+      - ./blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml
+    networks:
+      - monitoring
+    restart: unless-stopped
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: "fluentd:24224"
+        tag: "docker.blackbox"
+        fluentd-async: "true"
+
+  grafana:
+    image: grafana/grafana:10.4.1
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    volumes:
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - grafana-data:/var/lib/grafana
+    networks:
+      - monitoring
+    restart: unless-stopped
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: "fluentd:24224"
+        tag: "docker.grafana"
+        fluentd-async: "true"
+
+volumes:
+  elasticsearch-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+  fluentd-data:
+    driver: local

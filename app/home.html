@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Chat</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        #chat { width: 400px; height: 300px; border: 1px solid #ccc; overflow-y: scroll; padding: 10px; margin-bottom: 10px; }
+        #message { width: 300px; padding: 5px; }
+        button { padding: 5px 15px; }
+        .message { margin: 5px 0; padding: 5px; background: #f0f0f0; border-radius: 3px; }
+        .status { color: #666; font-style: italic; }
+    </style>
+</head>
+<body>
+    <h1>Go WebSocket Chat</h1>
+    <div id="chat"></div>
+    <input type="text" id="message" placeholder="Type your message...">
+    <button onclick="sendMessage()">Send</button>
+    <button onclick="connect()">Connect</button>
+    <button onclick="disconnect()">Disconnect</button>
+    
+    <div style="margin-top: 20px;">
+        <h3>System Info</h3>
+        <p>Connected users: <span id="userCount">0</span></p>
+        <p>Status: <span id="status">Disconnected</span></p>
+    </div>
+
+    <script>
+        let ws;
+        let userCount = 0;
+        
+        function connect() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                alert("Already connected!");
+                return;
+            }
+            
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = protocol + '//' + window.location.host + '/ws';
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = function() {
+                document.getElementById('status').textContent = 'Connected';
+                document.getElementById('status').style.color = 'green';
+                addMessage('System: Connected to chat server', 'status');
+            };
+            
+            ws.onclose = function() {
+                document.getElementById('status').textContent = 'Disconnected';
+                document.getElementById('status').style.color = 'red';
+                addMessage('System: Disconnected from chat server', 'status');
+            };
+            
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+                addMessage('System: Connection error', 'status');
+            };
+            
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                if (data.type === 'userCount') {
+                    userCount = data.count;
+                    document.getElementById('userCount').textContent = userCount;
+                } else if (data.message) {
+                    addMessage(data.message);
+                }
+            };
+        }
+        
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+        
+        function sendMessage() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert("Not connected to chat server!");
+                return;
+            }
+            
+            const messageInput = document.getElementById('message');
+            const message = messageInput.value.trim();
+            
+            if (message) {
+                ws.send(JSON.stringify({message: message}));
+                addMessage('You: ' + message);
+                messageInput.value = '';
+            }
+        }
+        
+        function addMessage(text, className = 'message') {
+            const chatDiv = document.getElementById('chat');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = className;
+            messageDiv.textContent = text;
+            chatDiv.appendChild(messageDiv);
+            chatDiv.scrollTop = chatDiv.scrollHeight;
+        }
+        
+        // Автоматическое подключение при загрузке страницы
+        window.onload = function() {
+            connect();
+        };
+        
+        // Отправка сообщения по Enter
+        document.getElementById('message').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>
