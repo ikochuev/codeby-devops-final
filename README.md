@@ -20,7 +20,7 @@
 
 ##⚙️ Быстрый старт (локальное развёртывание)
 # 1. Клонировать репозиторий
-git clone https://github.com/<ваш-username>/codeby-devops-final.git
+git clone https://github.com/ikochuev/codeby-devops-final.git
 cd codeby-devops-final
 
 # 2. Запустить полную автоматическую настройку (Docker & Docker Compose обязательны)
